@@ -9,6 +9,7 @@ contract MarketPlace is ERC721URIStorage {
 
     constructor() ERC721("CarMarketplace", "CARS") {
         owner = msg.sender;
+        _nextTokenId = 1;
     }
 
     //   events
@@ -33,6 +34,7 @@ contract MarketPlace is ERC721URIStorage {
     uint256 public dealerCount = 0;
     uint256 public carCount = 0;
     uint256 public dealerRegistrationFee = 0.01 ether;
+    uint256 public platformFee = 0.001 ether;
 
     mapping(address => uint[]) public carsByDealer;
     mapping(address => CarInfo[]) public carBought;
@@ -65,7 +67,8 @@ contract MarketPlace is ERC721URIStorage {
 
         dealers[msg.sender] = Dealer(_email, _name, block.timestamp, true);
         isRegistered[msg.sender] = true;
-
+        dealerCount++;
+        emit Events.DealerRegistered(msg.sender, _name, block.timestamp);
         emit Events.DealerRegistered(msg.sender, _name, block.timestamp);
     }
 
@@ -93,7 +96,8 @@ contract MarketPlace is ERC721URIStorage {
             false
         );
 
-        carsByDealer[msg.sender].push(newCarId);
+        carCount++;
+        emit Events.CarMinted(msg.sender, _model, _make, _price);
 
         emit Events.CarMinted(msg.sender, _model, _make, _price);
         return newCarId;
@@ -112,15 +116,22 @@ contract MarketPlace is ERC721URIStorage {
     function buyCar(uint _carId) external payable {
         CarInfo storage car = carById[_carId];
         require(car.forSale, "Car not Listed");
-        require(msg.value >= car.price, "Insufficient Funds");
+        require(msg.value >= car.price + platformFee, "Insufficient Funds");
 
         address seller = ownerOf(_carId);
+        require(seller != address(0), "Invalid seller address");
 
         _transfer(seller, msg.sender, _carId);
         car.forSale = false;
         car.dealer = msg.sender;
 
-        payable(seller).transfer(msg.value);
+        (bool success, ) = payable(seller).call{value: car.price}("");
+        require(success, "Transfer failed");
+
+        (bool successPlatformFee, ) = payable(owner).call{value: platformFee}("");
+        require(successPlatformFee, "Transfer failed");
+
+
         carBought[msg.sender].push(car);
         emit Events.CarSold(_carId, seller, msg.sender, car.price);
     }
@@ -140,5 +151,10 @@ contract MarketPlace is ERC721URIStorage {
         address _user
     ) public view returns (CarInfo[] memory) {
         return carBought[_user];
+    }
+
+    function delistCar(uint _carId) external {
+        require(ownerOf(_carId) == msg.sender, "Not the car owner");
+        carById[_carId].forSale = false;
     }
 }
