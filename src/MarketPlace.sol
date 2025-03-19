@@ -12,9 +12,8 @@ contract MarketPlace is ERC721URIStorage {
         _nextTokenId = 1;
     }
 
-    //   events
-
     struct CarInfo {
+        uint id;
         string make;
         string model;
         uint256 year;
@@ -36,7 +35,7 @@ contract MarketPlace is ERC721URIStorage {
     uint256 public dealerRegistrationFee = 0.01 ether;
     uint256 public platformFee = 0.001 ether;
 
-    mapping(address => uint[]) public carsByDealer;
+    mapping(address => CarInfo[]) public carsByDealer;
     mapping(address => CarInfo[]) public carBought;
     mapping(uint256 => CarInfo) public carById;
     mapping(address => Dealer) public dealers;
@@ -87,6 +86,7 @@ contract MarketPlace is ERC721URIStorage {
         _setTokenURI(newCarId, _tokenURI);
 
         carById[newCarId] = CarInfo(
+             _nextTokenId,
             _make,
             _model,
             _year,
@@ -94,6 +94,10 @@ contract MarketPlace is ERC721URIStorage {
             _price,
             msg.sender,
             false
+        );
+
+        carsByDealer[msg.sender].push(
+            CarInfo(_nextTokenId,_make, _model, _year, _vin, _price, msg.sender, false)
         );
 
         carCount++;
@@ -105,7 +109,7 @@ contract MarketPlace is ERC721URIStorage {
 
     // list car After minting as nft
 
-    function listCar(uint _carId, uint _price) external {
+    function listCar(uint _carId, uint _price) external onlyRegisteredDealer {
         require(ownerOf(_carId) == msg.sender, "Not the car owner");
         carById[_carId].price = _price;
         carById[_carId].forSale = true;
@@ -128,9 +132,10 @@ contract MarketPlace is ERC721URIStorage {
         (bool success, ) = payable(seller).call{value: car.price}("");
         require(success, "Transfer failed");
 
-        (bool successPlatformFee, ) = payable(owner).call{value: platformFee}("");
+        (bool successPlatformFee, ) = payable(owner).call{value: platformFee}(
+            ""
+        );
         require(successPlatformFee, "Transfer failed");
-
 
         carBought[msg.sender].push(car);
         emit Events.CarSold(_carId, seller, msg.sender, car.price);
@@ -138,13 +143,13 @@ contract MarketPlace is ERC721URIStorage {
 
     function getDealerCars(
         address _dealer
-    ) external view returns (uint256[] memory) {
+    ) external view returns (CarInfo[] memory) {
         return carsByDealer[_dealer];
     }
 
-    function updateCarPrice(uint256 _tokenId, uint256 _newPrice) external {
-        require(ownerOf(_tokenId) == msg.sender, "Not the car owner");
-        carById[_tokenId].price = _newPrice;
+    function updateCarPrice(uint256 _carId, uint256 _newPrice) external {
+        require(ownerOf(_carId) == msg.sender, "Not the car owner");
+        carById[_carId].price = _newPrice;
     }
 
     function getAllCarsBought(
@@ -156,5 +161,17 @@ contract MarketPlace is ERC721URIStorage {
     function delistCar(uint _carId) external {
         require(ownerOf(_carId) == msg.sender, "Not the car owner");
         carById[_carId].forSale = false;
+    }
+
+    function getDealerCarCount(
+        address _dealer
+    ) external view returns (uint256) {
+        return carsByDealer[_dealer].length;
+    }
+
+    function getTokenURI(
+        uint256 _tokenId
+    ) external view returns (string memory) {
+        return tokenURI(_tokenId);
     }
 }
